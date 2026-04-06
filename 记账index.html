@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#000000">
+  <title>AI 记账分析</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <style>
+    /* 移动端原生应用级基础样式 */
+    :root {
+      --bg-base: #000000;
+      --bg-card: #18181b; /* zinc-900 */
+      --text-main: #f4f4f5;
+      --text-muted: #a1a1aa;
+    }
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    /* 允许输入框被选中和复制 */
+    input, textarea {
+      user-select: auto;
+    }
+    /* 隐藏数字输入框箭头 */
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button {
+      -webkit-appearance: none; margin: 0;
+    }
+    /* 适配底部安全区 (全面屏小白条) */
+    .pb-safe { padding-bottom: env(safe-area-inset-bottom, 16px); }
+    .pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+    
+    /* 页面切换与弹窗动画 */
+    .fade-in { animation: fadeIn 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+    .slide-up { animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.98); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(100%); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    /* 隐藏原生滚动条但保留滚动 */
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="min-h-screen antialiased">
+
+  <div class="max-w-md mx-auto min-h-screen relative shadow-2xl bg-black overflow-hidden flex flex-col">
+    
+    <!-- 顶部状态栏 -->
+    <header class="pt-safe sticky top-0 z-30 bg-black/80 backdrop-blur-lg border-b border-zinc-900">
+      <div class="px-5 py-4 flex justify-between items-center">
+        <h1 class="text-xl font-bold tracking-tight bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
+          AI 智能记账
+        </h1>
+        <div id="header-date" class="text-xs text-zinc-500 font-medium bg-zinc-900 px-2 py-1 rounded-md"></div>
+      </div>
+    </header>
+
+    <!-- 核心滚动内容区 -->
+    <main class="flex-1 overflow-y-auto overflow-x-hidden px-5 pb-24 no-scrollbar relative" id="main-content">
+      
+      <!-- ================= 视图 1：仪表盘首页 ================= -->
+      <div id="view-dashboard" class="fade-in space-y-6 mt-4 hidden">
+        <!-- 资产与预算卡片 -->
+        <div class="grid grid-cols-2 gap-4">
+          <div class="bg-zinc-900 rounded-2xl p-4 border border-zinc-800 relative shadow-lg flex flex-col justify-between h-28">
+            <div class="flex items-center justify-between text-zinc-400">
+              <span class="text-xs font-medium flex items-center">
+                <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
+                总资产
+              </span>
+              <button onclick="app.openConfigModal('assets')" class="p-1 hover:text-white bg-black/50 rounded-full"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
+            </div>
+            <div id="dash-assets" class="text-xl font-bold truncate">¥ 0.00</div>
+          </div>
+          <div class="bg-zinc-900 rounded-2xl p-4 border border-zinc-800 relative shadow-lg flex flex-col justify-between h-28">
+            <div class="flex items-center justify-between text-zinc-400">
+              <span class="text-xs font-medium flex items-center">
+                <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                本月剩余
+              </span>
+              <button onclick="app.openConfigModal('budget')" class="p-1 hover:text-white bg-black/50 rounded-full"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
+            </div>
+            <div id="dash-budget" class="text-xl font-bold truncate">¥ 0.00</div>
+          </div>
+        </div>
+
+        <!-- 收支趋势折线图 -->
+        <div class="bg-zinc-900 rounded-2xl p-5 border border-zinc-800 shadow-lg">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-semibold text-white text-sm">收支趋势</h3>
+            <div class="flex bg-black rounded-lg p-0.5 border border-zinc-800" id="chart-controls">
+              <!-- 渲染按钮区 -->
+            </div>
+          </div>
+          <div id="chart-container" class="w-full"></div>
+        </div>
+
+        <!-- 最近记录 -->
+        <div>
+          <div class="flex items-center justify-between mb-3 px-1">
+            <h3 class="font-semibold text-white text-sm">最近记录</h3>
+            <button onclick="app.switchTab('records')" class="text-zinc-400 text-xs flex items-center bg-zinc-900 px-2 py-1 rounded-md">查看全部</button>
+          </div>
+          <div id="dash-recent-list" class="space-y-3"></div>
+        </div>
+      </div>
+
+      <!-- ================= 视图 2：所有明细 ================= -->
+      <div id="view-records" class="fade-in pb-10 mt-4 hidden">
+        <div class="flex justify-between items-center mb-6 sticky top-0 bg-black/90 py-2 z-10 backdrop-blur-sm">
+          <input type="month" id="filter-month" onchange="app.renderRecords()" class="bg-zinc-900 border border-zinc-800 text-white text-sm rounded-xl px-3 py-2 outline-none focus:border-blue-500">
+          <button onclick="app.openExportModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl flex items-center text-sm font-medium transition active:scale-95 shadow-lg shadow-blue-900/20">
+            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+            导出给AI
+          </button>
+        </div>
+        <div id="records-list" class="space-y-3"></div>
+      </div>
+
+      <!-- ================= 视图 3：添加/编辑 ================= -->
+      <div id="view-add" class="fade-in max-w-md mx-auto mt-4 hidden">
+        <div class="flex justify-between items-center mb-6">
+          <h2 id="add-title" class="text-xl font-bold text-white">新增记录</h2>
+          <button id="add-delete-btn" onclick="app.deleteCurrentTx()" class="text-red-500 bg-red-500/10 p-2 rounded-lg hidden active:scale-95">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+          </button>
+        </div>
+        
+        <div class="bg-zinc-900 rounded-3xl p-5 border border-zinc-800 shadow-xl space-y-6">
+          <!-- 类型选择 -->
+          <div class="bg-black p-1 rounded-xl flex" id="add-type-tabs">
+            <button onclick="app.setTxType('expense')" id="type-expense" class="flex-1 py-2.5 text-sm rounded-lg transition font-medium">支出</button>
+            <button onclick="app.setTxType('fixed_income')" id="type-fixed_income" class="flex-1 py-2.5 text-sm rounded-lg transition font-medium">固定收入</button>
+            <button onclick="app.setTxType('fluctuating_income')" id="type-fluctuating_income" class="flex-1 py-2.5 text-sm rounded-lg transition font-medium">变动收入</button>
+          </div>
+
+          <div class="space-y-5">
+            <!-- 金额输入 -->
+            <div>
+              <label class="text-xs text-zinc-500 mb-1.5 block font-medium" id="label-amount">金额 (¥)</label>
+              <div class="flex items-center bg-black rounded-xl border border-zinc-800 focus-within:border-blue-500 overflow-hidden">
+                <button id="add-sign-btn" onclick="app.toggleSign()" class="hidden px-5 py-4 font-black text-xl border-r border-zinc-800 active:bg-zinc-800 transition">+</button>
+                <input type="number" step="0.01" id="add-amount" placeholder="0.00" class="flex-1 bg-transparent text-white p-4 text-xl font-bold outline-none w-full">
+              </div>
+              <p id="fluctuating-hint" class="text-[10px] text-zinc-600 mt-1 hidden">提示：点击左侧符号切换盈亏，负数将从总资产中扣除</p>
+            </div>
+            
+            <!-- 日期 -->
+            <div>
+              <label class="text-xs text-zinc-500 mb-1.5 block font-medium">日期</label>
+              <input type="date" id="add-date" class="w-full bg-black text-white border border-zinc-800 focus:border-blue-500 p-4 rounded-xl outline-none">
+            </div>
+            
+            <!-- 备注 -->
+            <div>
+              <label class="text-xs text-zinc-500 mb-1.5 block font-medium">备注与说明</label>
+              <input type="text" id="add-note" placeholder="如：餐饮、工资、股票代码等..." class="w-full bg-black text-white border border-zinc-800 focus:border-blue-500 p-4 rounded-xl outline-none">
+            </div>
+          </div>
+          
+          <button onclick="app.saveTx()" id="add-save-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg py-4 rounded-2xl mt-2 transition active:scale-95 shadow-lg shadow-blue-900/30">
+            确认保存
+          </button>
+        </div>
+      </div>
+
+      <!-- ================= 视图 4：AI 分析库 ================= -->
+      <div id="view-ai" class="fade-in pb-10 mt-4 hidden">
+        
+        <!-- 子视图：列表 -->
+        <div id="ai-list-view">
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-xl font-bold text-white">AI 财务建议库</h2>
+            <button onclick="app.openAiAdd()" class="bg-blue-600/20 text-blue-400 p-2 rounded-full active:scale-95">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+            </button>
+          </div>
+          <div id="ai-list-container" class="space-y-3"></div>
+        </div>
+
+        <!-- 子视图：添加/编辑 -->
+        <div id="ai-edit-view" class="hidden space-y-4">
+          <div class="flex items-center mb-4">
+            <button onclick="app.switchAiMode('list')" class="mr-2 p-2 bg-zinc-900 rounded-full active:scale-95"><svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg></button>
+            <h2 id="ai-edit-title" class="text-xl font-bold text-white">保存AI建议</h2>
+          </div>
+          <input type="text" id="ai-input-title" placeholder="为本次分析起个标题 (选填)" class="w-full bg-zinc-900 border border-zinc-800 text-white p-4 rounded-xl outline-none focus:border-blue-500 font-medium">
+          <textarea id="ai-input-content" rows="12" placeholder="长按粘贴 AI 生成的财务分析报告和理财建议..." class="w-full bg-zinc-900 border border-zinc-800 text-white p-4 rounded-xl outline-none focus:border-blue-500 resize-none text-sm leading-relaxed"></textarea>
+          <button onclick="app.saveAiRecord()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-xl flex justify-center items-center active:scale-95 transition shadow-lg shadow-emerald-900/30">
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
+            存入分析库
+          </button>
+        </div>
+
+        <!-- 子视图：查看详情 -->
+        <div id="ai-detail-view" class="hidden">
+          <div class="flex justify-between items-center mb-6">
+            <button onclick="app.switchAiMode('list')" class="p-2 bg-zinc-900 rounded-full active:scale-95"><svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg></button>
+            <div class="flex space-x-3">
+              <button onclick="app.editCurrentAi()" class="px-3 py-1.5 bg-zinc-800 text-zinc-300 rounded-lg text-sm font-medium active:scale-95">编辑</button>
+              <button onclick="app.deleteCurrentAi()" class="px-3 py-1.5 bg-red-500/20 text-red-400 rounded-lg text-sm font-medium active:scale-95">删除</button>
+            </div>
+          </div>
+          <h2 id="ai-detail-title" class="text-2xl font-bold text-white mb-2"></h2>
+          <p id="ai-detail-date" class="text-xs text-zinc-500 mb-6 font-mono"></p>
+          <div id="ai-detail-content" class="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 whitespace-pre-wrap text-sm text-zinc-300 leading-relaxed shadow-inner"></div>
+        </div>
+      </div>
+    </main>
+
+    <!-- 底部固定导航栏 -->
+    <nav class="fixed bottom-0 left-0 right-0 bg-zinc-950/90 backdrop-blur-xl border-t border-zinc-900 pb-safe z-40">
+      <div class="max-w-md mx-auto flex justify-between items-center h-16 px-6">
+        
+        <button onclick="app.switchTab('dashboard')" id="nav-dashboard" class="flex flex-col items-center w-12 transition text-zinc-500">
+          <svg class="w-6 h-6 mb-1 nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+          <span class="text-[10px] font-medium">首页</span>
+        </button>
+        
+        <button onclick="app.switchTab('records')" id="nav-records" class="flex flex-col items-center w-12 transition text-zinc-500">
+          <svg class="w-6 h-6 mb-1 nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
+          <span class="text-[10px] font-medium">明细</span>
+        </button>
+        
+        <!-- 悬浮添加大按钮 -->
+        <div class="relative -top-5">
+          <button onclick="app.openAddTx()" class="bg-gradient-to-tr from-blue-600 to-indigo-500 text-white p-3.5 rounded-full shadow-lg shadow-blue-900/50 border-4 border-black active:scale-90 transition-transform">
+            <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+          </button>
+        </div>
+        
+        <button onclick="app.switchTab('ai')" id="nav-ai" class="flex flex-col items-center w-12 transition text-zinc-500">
+          <svg class="w-6 h-6 mb-1 nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+          <span class="text-[10px] font-medium">AI分析</span>
+        </button>
+        
+        <button onclick="app.openConfigModal('budget')" class="flex flex-col items-center w-12 transition text-zinc-500">
+          <svg class="w-6 h-6 mb-1 nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+          <span class="text-[10px] font-medium">设置</span>
+        </button>
+
+      </div>
+    </nav>
+
+    <!-- 模态框：设置项 (资产/预算) -->
+    <div id="modal-config" class="fixed inset-0 bg-black/80 z-50 hidden flex-col items-center justify-center p-5 backdrop-blur-sm">
+      <div class="bg-zinc-900 w-full max-w-sm rounded-3xl p-6 border border-zinc-800 shadow-2xl slide-up">
+        <h3 id="config-title" class="text-xl font-bold text-white mb-6">修改配置</h3>
+        <div class="bg-black border border-zinc-800 rounded-xl flex items-center mb-6 overflow-hidden focus-within:border-blue-500">
+          <span class="px-4 text-zinc-500 font-bold">¥</span>
+          <input type="number" step="0.01" id="config-input" class="w-full bg-transparent text-white p-4 text-xl font-bold outline-none">
+        </div>
+        <div class="flex space-x-3">
+          <button onclick="app.closeConfigModal()" class="flex-1 py-3.5 rounded-xl bg-zinc-800 text-white font-medium active:scale-95 transition">取消</button>
+          <button onclick="app.saveConfig()" class="flex-1 py-3.5 rounded-xl bg-blue-600 text-white font-bold active:scale-95 transition">保存更新</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 模态框：导出给AI -->
+    <div id="modal-export" class="fixed inset-0 bg-black/80 z-50 hidden flex-col items-center justify-end sm:justify-center p-4 backdrop-blur-sm pb-safe">
+      <div class="bg-zinc-900 w-full max-w-md rounded-3xl p-6 border border-zinc-800 shadow-2xl slide-up relative">
+        <button onclick="app.closeExportModal()" class="absolute top-4 right-4 text-zinc-500 bg-zinc-800 rounded-full p-1.5 active:scale-90">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+        <h3 class="text-lg font-bold text-white mb-5 flex items-center">
+          <svg class="w-5 h-5 mr-2 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+          一键导出给 AI
+        </h3>
+        
+        <!-- 时间范围选择: 今日、本周、本月、全部 -->
+        <div class="flex space-x-1.5 mb-4 bg-black p-1.5 rounded-xl border border-zinc-800" id="export-range-tabs">
+          <button onclick="app.setExportRange('today')" id="exp-range-today" class="flex-1 py-2 text-xs rounded-lg transition text-zinc-500 font-medium">今日</button>
+          <button onclick="app.setExportRange('week')" id="exp-range-week" class="flex-1 py-2 text-xs rounded-lg transition text-zinc-500 font-medium">近7天</button>
+          <button onclick="app.setExportRange('month')" id="exp-range-month" class="flex-1 py-2 text-xs rounded-lg transition bg-zinc-800 text-white font-bold shadow-sm">近30天</button>
+          <button onclick="app.setExportRange('all')" id="exp-range-all" class="flex-1 py-2 text-xs rounded-lg transition text-zinc-500 font-medium">全部</button>
+        </div>
+        
+        <div class="bg-black border border-zinc-800 rounded-xl p-3 mb-5 relative">
+          <textarea id="export-textarea" readonly class="w-full h-40 bg-transparent text-xs text-zinc-400 outline-none resize-none font-mono"></textarea>
+        </div>
+        <button onclick="app.copyExport()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl flex justify-center items-center transition active:scale-95 shadow-lg shadow-blue-900/30">
+          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+          复制数据并去求助 AI
+        </button>
+      </div>
+    </div>
+
+    <!-- 居中浮动 Toast 提示 -->
+    <div id="toast" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 pointer-events-none opacity-0 scale-95">
+      <div id="toast-msg" class="bg-zinc-800 text-white px-6 py-3 rounded-full shadow-2xl border border-zinc-700 text-sm font-medium flex items-center">
+        操作成功
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 核心逻辑脚本 -->
+  <script>
+    const app = (function() {
+      // ===== 状态管理 =====
+      let state = {
+        tab: 'dashboard',
+        transactions: JSON.parse(localStorage.getItem('ai_finance_tx')) || [],
+        initialAssets: Number(localStorage.getItem('ai_finance_assets')) || 0,
+        monthlyBudget: Number(localStorage.getItem('ai_finance_budget')) || 3000,
+        analyses: JSON.parse(localStorage.getItem('ai_finance_analyses')) || [],
+        chartDays: 7,
+        exportRange: 'month',
+        
+        // 临时编辑状态
+        editingTxId: null,
+        txForm: { type: 'expense', isNegative: false },
+        
+        // AI编辑状态
+        aiMode: 'list',
+        editingAiId: null
+      };
+
+      // ===== 工具函数 =====
+      const utils = {
+        generateId: () => Math.random().toString(36).substr(2, 9),
+        // 获取本地时间的YYYY-MM-DD
+        getTodayString: () => {
+          const d = new Date();
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        },
+        formatMoney: (amount) => Number(amount).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        showToast: (msg) => {
+          const toast = document.getElementById('toast');
+          document.getElementById('toast-msg').innerText = msg;
+          toast.classList.remove('opacity-0', 'scale-95');
+          toast.classList.add('opacity-100', 'scale-100');
+          setTimeout(() => {
+            toast.classList.remove('opacity-100', 'scale-100');
+            toast.classList.add('opacity-0', 'scale-95');
+          }, 2000);
+        },
+        saveData: () => {
+          localStorage.setItem('ai_finance_tx', JSON.stringify(state.transactions));
+          localStorage.setItem('ai_finance_assets', state.initialAssets.toString());
+          localStorage.setItem('ai_finance_budget', state.monthlyBudget.toString());
+          localStorage.setItem('ai_finance_analyses', JSON.stringify(state.analyses));
+        }
+      };
+
+      // ===== 初始化与自动更新时间 =====
+      function init() {
+        updateDateDisplay();
+        document.getElementById('filter-month').value = utils.getTodayString().slice(0, 7);
+        switchTab('dashboard');
+        
+        // 确保跨天时日期自动更新
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') {
+            updateDateDisplay();
+            if (state.tab === 'dashboard') renderDashboard();
+          }
+        });
+      }
+
+      function updateDateDisplay() {
+        document.getElementById('header-date').innerText = utils.getTodayString();
+      }
+
+      // ===== 核心财务计算 =====
+      function getStats() {
+        const currentMonthPrefix = utils.getTodayString().slice(0, 7);
+        let totalIncome = 0, totalExpense = 0, monthExpense = 0;
+        
+        state.transactions.forEach(tx => {
+          const amt = Number(tx.amount);
+          const isCurrentMonth = tx.date.startsWith(currentMonthPrefix);
+          
+          if (tx.type === 'expense') {
+            totalExpense += amt;
+            if (isCurrentMonth) monthExpense += amt;
+          } else if (tx.type === 'fixed_income') {
+            totalIncome += amt;
+          } else if (tx.type === 'fluctuating_income') {
+            // 变动收入直接相加，如果是负数（亏损），自然减少资产
+            totalIncome += amt; 
+          }
+        });
+
+        return {
+          currentAssets: state.initialAssets + totalIncome - totalExpense,
+          remainingBudget: state.monthlyBudget - monthExpense
+        };
+      }
+
+      // 生成单条记录 HTML 组件
+      function generateTxItemHTML(tx) {
+        const isExpense = tx.type === 'expense';
+        const isFluctuating = tx.type === 'fluctuating_income';
+        const amt = Number(tx.amount);
+        
+        let sign = '', colorClass = 'text-white', typeName = '', bgClass = 'bg-zinc-900';
+        if (isExpense) {
+          sign = '-'; colorClass = 'text-red-400'; typeName = '支出';
+        } else if (tx.type === 'fixed_income') {
+          sign = '+'; colorClass = 'text-emerald-400'; typeName = '固定收入';
+        } else if (isFluctuating) {
+          sign = amt >= 0 ? '+' : ''; 
+          colorClass = amt >= 0 ? 'text-emerald-400' : 'text-red-400';
+          typeName = '变动收入';
+          if(amt < 0) bgClass = 'bg-red-950/10 border-red-900/30'; // 亏损时背景稍微变色预警
+        }
+
+        return `
+          <div onclick="app.editTx('${tx.id}')" class="${bgClass} border border-zinc-800 rounded-2xl p-4 flex items-center justify-between active:scale-[0.98] transition cursor-pointer">
+            <div class="flex-1 truncate pr-4">
+              <div class="font-medium text-white truncate text-sm">${tx.note || '未命名账目'}</div>
+              <div class="text-xs text-zinc-500 mt-1">${tx.date.slice(5)} · ${typeName}</div>
+            </div>
+            <div class="font-bold ${colorClass} flex items-center text-lg shrink-0">
+              ${sign}${Math.abs(amt).toFixed(2)}
+              <svg class="w-4 h-4 ml-1 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+            </div>
+          </div>
+        `;
+      }
+
+      // ===== 视图渲染逻辑 =====
+
+      function renderDashboard() {
+        const stats = getStats();
+        
+        const elAssets = document.getElementById('dash-assets');
+        elAssets.innerText = `¥ ${utils.formatMoney(stats.currentAssets)}`;
+        elAssets.className = `text-xl font-bold truncate ${stats.currentAssets >= 0 ? 'text-white' : 'text-red-400'}`;
+        
+        const elBudget = document.getElementById('dash-budget');
+        elBudget.innerText = `¥ ${utils.formatMoney(stats.remainingBudget)}`;
+        elBudget.className = `text-xl font-bold truncate ${stats.remainingBudget >= 0 ? 'text-white' : 'text-red-400'}`;
+
+        document.getElementById('chart-controls').innerHTML = `
+          <button onclick="app.setChartDays(7)" class="px-3 py-1 text-[10px] rounded-md ${state.chartDays === 7 ? 'bg-zinc-800 text-white font-medium' : 'text-zinc-500'}">7天</button>
+          <button onclick="app.setChartDays(30)" class="px-3 py-1 text-[10px] rounded-md ${state.chartDays === 30 ? 'bg-zinc-800 text-white font-medium' : 'text-zinc-500'}">30天</button>
+        `;
+
+        renderChart();
+
+        const recentTx = [...state.transactions].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 4);
+        const listEl = document.getElementById('dash-recent-list');
+        if (recentTx.length === 0) {
+          listEl.innerHTML = '<div class="text-zinc-600 text-center py-8 text-sm bg-zinc-900 rounded-2xl border border-zinc-800 border-dashed">开始记录你的第一笔账目吧</div>';
+        } else {
+          listEl.innerHTML = recentTx.map(generateTxItemHTML).join('');
+        }
+      }
+
+      // 绘制原生折线图 (无依赖)
+      function renderChart() {
+        const days = state.chartDays;
+        const data = [];
+        const today = new Date();
+        today.setHours(0,0,0,0);
+
+        for (let i = days - 1; i >= 0; i--) {
+          const d = new Date(today);
+          d.setDate(d.getDate() - i);
+          const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          
+          let dayInc = 0, dayExp = 0;
+          state.transactions.filter(t => t.date === dateStr).forEach(t => {
+            const amt = Number(t.amount);
+            if (t.type === 'expense') {
+              dayExp += amt;
+            } else if (t.type === 'fixed_income') {
+              dayInc += amt;
+            } else if (t.type === 'fluctuating_income') {
+              // 关键逻辑：变动收入亏损(负数)算入日支出图表更直观，盈利算入收入
+              if (amt >= 0) dayInc += amt; 
+              else dayExp += Math.abs(amt);
+            }
+          });
+          data.push({ date: dateStr, inc: dayInc, exp: dayExp });
+        }
+
+        const container = document.getElementById('chart-container');
+        if (data.every(d => d.inc === 0 && d.exp === 0)) {
+          container.innerHTML = '<div class="h-32 flex items-center justify-center text-zinc-600 text-xs">暂无收支曲线数据</div>';
+          return;
+        }
+
+        const maxVal = Math.max(...data.flatMap(d => [d.inc, d.exp]), 10); // 设置最小峰值为10避免线太平
+        const height = 120, width = 300;
+        
+        const getPoints = (key) => {
+          if (data.length === 1) return `0,${height - (data[0][key]/maxVal)*height} ${width},${height - (data[0][key]/maxVal)*height}`;
+          return data.map((d, i) => `${(i / (data.length - 1)) * width},${height - (d[key]/maxVal)*height}`).join(' ');
+        };
+
+        container.innerHTML = `
+          <div class="w-full flex flex-col items-center">
+            <svg viewBox="-5 -5 ${width + 10} ${height + 10}" class="w-full h-32 overflow-visible">
+              <!-- 背景网格 -->
+              ${[0, 0.5, 1].map(r => `<line x1="0" y1="${height * r}" x2="${width}" y2="${height * r}" stroke="#27272a" stroke-dasharray="2" />`).join('')}
+              <!-- 收入绿线 -->
+              <polyline points="${getPoints('inc')}" fill="none" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+              <!-- 支出/亏损红线 -->
+              <polyline points="${getPoints('exp')}" fill="none" stroke="#f87171" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <div class="flex justify-between w-full mt-3 text-[10px] text-zinc-500 font-mono">
+              <span>${data[0]?.date.slice(5)}</span>
+              <span>${data[data.length - 1]?.date.slice(5)}</span>
+            </div>
+            <div class="flex space-x-6 mt-2 text-[10px] text-zinc-400">
+              <div class="flex items-center"><div class="w-2 h-2 rounded-full bg-emerald-400 mr-1.5 shadow-[0_0_8px_rgba(52,211,153,0.5)]"></div>资金流入</div>
+              <div class="flex items-center"><div class="w-2 h-2 rounded-full bg-red-400 mr-1.5 shadow-[0_0_8px_rgba(248,113,113,0.5)]"></div>资金流失</div>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderRecords() {
+        const filterMonth = document.getElementById('filter-month').value;
+        const filtered = state.transactions
+          .filter(t => t.date.startsWith(filterMonth))
+          .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        const listEl = document.getElementById('records-list');
+        if (filtered.length === 0) {
+          listEl.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-20 text-zinc-600">
+              <svg class="w-12 h-12 mb-3 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+              <p class="text-sm">该月份暂无记录</p>
+            </div>
+          `;
+        } else {
+          listEl.innerHTML = filtered.map(generateTxItemHTML).join('');
+        }
+      }
+
+      function renderAiView() {
+        ['ai-list-view', 'ai-edit-view', 'ai-detail-view'].forEach(id => {
+          document.getElementById(id).classList.add('hidden');
+        });
+
+        if (state.aiMode === 'list') {
+          document.getElementById('ai-list-view').classList.remove('hidden');
+          const listContainer = document.getElementById('ai-list-container');
+          if (state.analyses.length === 0) {
+            listContainer.innerHTML = `
+              <div class="text-center py-16 bg-zinc-900 border border-zinc-800 rounded-3xl mt-4">
+                <svg class="w-12 h-12 text-zinc-700 mx-auto mb-4 block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+                <p class="text-zinc-400 text-sm font-medium">还没有任何AI分析报告</p>
+                <p class="text-zinc-600 text-xs mt-2 px-8">去"明细"导出数据发送给AI，然后将建议粘贴到这里保存。</p>
+              </div>`;
+          } else {
+            listContainer.innerHTML = state.analyses.map(a => `
+              <div onclick="app.viewAiRecord('${a.id}')" class="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 cursor-pointer hover:border-zinc-700 transition active:scale-[0.98]">
+                <div class="font-bold text-white mb-1.5 text-base truncate">${a.title}</div>
+                <div class="text-xs text-zinc-500 mb-3 font-mono">${a.date}</div>
+                <div class="text-sm text-zinc-400 line-clamp-3 leading-relaxed">${a.content}</div>
+              </div>
+            `).join('');
+          }
+        } else if (state.aiMode === 'edit') {
+          document.getElementById('ai-edit-view').classList.remove('hidden');
+          document.getElementById('ai-edit-title').innerText = state.editingAiId ? '编辑分析记录' : '保存AI建议';
+        } else if (state.aiMode === 'view') {
+          document.getElementById('ai-detail-view').classList.remove('hidden');
+          const ai = state.analyses.find(a => a.id === state.editingAiId);
+          if (ai) {
+            document.getElementById('ai-detail-title').innerText = ai.title;
+            document.getElementById('ai-detail-date').innerText = ai.date;
+            document.getElementById('ai-detail-content').innerText = ai.content;
+          }
+        }
+      }
+
+      // ===== 导航与交互 =====
+
+      function switchTab(tab) {
+        state.tab = tab;
+        ['dashboard', 'records', 'add', 'ai'].forEach(id => {
+          document.getElementById(`view-${id}`).classList.add('hidden');
+          const navBtn = document.getElementById(`nav-${id}`);
+          if (navBtn) {
+            navBtn.classList.remove('text-blue-500');
+            navBtn.classList.add('text-zinc-500');
+          }
+        });
+        
+        document.getElementById(`view-${tab}`).classList.remove('hidden');
+        const activeNav = document.getElementById(`nav-${tab}`);
+        if(activeNav) {
+          activeNav.classList.remove('text-zinc-500');
+          activeNav.classList.add('text-blue-500');
+        }
+
+        // 重新渲染对应视图
+        if (tab === 'dashboard') renderDashboard();
+        if (tab === 'records') renderRecords();
+        if (tab === 'ai') renderAiView();
+      }
+
+      // 记账表单
+      function setTxType(type) {
+        state.txForm.type = type;
+        const types = ['expense', 'fixed_income', 'fluctuating_income'];
+        types.forEach(t => {
+          const btn = document.getElementById(`type-${t}`);
+          if (t === type) {
+            btn.className = "flex-1 py-2.5 text-sm rounded-lg transition font-bold bg-zinc-800 text-white shadow-sm";
+          } else {
+            btn.className = "flex-1 py-2.5 text-sm rounded-lg transition font-medium text-zinc-500";
+          }
+        });
+
+        const signBtn = document.getElementById('add-sign-btn');
+        const amountInput = document.getElementById('add-amount');
+        const labelAmt = document.getElementById('label-amount');
+        const hint = document.getElementById('fluctuating-hint');
+
+        if (type === 'fluctuating_income') {
+          signBtn.classList.remove('hidden');
+          labelAmt.innerText = "变动金额 (包含盈亏)";
+          hint.classList.remove('hidden');
+          updateSignBtnUI();
+        } else {
+          signBtn.classList.add('hidden');
+          labelAmt.innerText = type === 'expense' ? "支出金额 (¥)" : "固定收入金额 (¥)";
+          hint.classList.add('hidden');
+        }
+      }
+
+      function toggleSign() {
+        state.txForm.isNegative = !state.txForm.isNegative;
+        updateSignBtnUI();
+      }
+
+      function updateSignBtnUI() {
+        const btn = document.getElementById('add-sign-btn');
+        if (state.txForm.isNegative) {
+          btn.innerText = "-";
+          btn.className = "px-6 py-4 font-black text-2xl border-r border-zinc-800 transition text-red-400 bg-red-950/30";
+        } else {
+          btn.innerText = "+";
+          btn.className = "px-5 py-4 font-black text-2xl border-r border-zinc-800 transition text-emerald-400 bg-emerald-950/30";
+        }
+      }
+
+      function openAddTx() {
+        state.editingTxId = null;
+        document.getElementById('add-title').innerText = "新增记录";
+        document.getElementById('add-delete-btn').classList.add('hidden');
+        document.getElementById('add-amount').value = '';
+        document.getElementById('add-date').value = utils.getTodayString();
+        document.getElementById('add-note').value = '';
+        state.txForm.isNegative = false;
+        setTxType('expense');
+        switchTab('add');
+      }
+
+      function editTx(id) {
+        const tx = state.transactions.find(t => t.id === id);
+        if (!tx) return;
+        state.editingTxId = id;
+        document.getElementById('add-title').innerText = "编辑记录";
+        document.getElementById('add-delete-btn').classList.remove('hidden');
+        document.getElementById('add-amount').value = Math.abs(tx.amount);
+        document.getElementById('add-date').value = tx.date;
+        document.getElementById('add-note').value = tx.note || '';
+        state.txForm.isNegative = tx.amount < 0;
+        setTxType(tx.type);
+        switchTab('add');
+      }
+
+      function saveTx() {
+        const amtRaw = document.getElementById('add-amount').value;
+        if (!amtRaw || isNaN(amtRaw)) return utils.showToast('请输入有效的金额');
+        if (Number(amtRaw) === 0) return utils.showToast('金额不能为0');
+        
+        let finalAmount = Math.abs(Number(amtRaw));
+        if (state.txForm.type === 'fluctuating_income' && state.txForm.isNegative) {
+          finalAmount = -finalAmount;
+        }
+
+        const tx = {
+          id: state.editingTxId || utils.generateId(),
+          type: state.txForm.type,
+          amount: finalAmount,
+          date: document.getElementById('add-date').value || utils.getTodayString(),
+          note: document.getElementById('add-note').value
+        };
+
+        if (state.editingTxId) {
+          state.transactions = state.transactions.map(t => t.id === tx.id ? tx : t);
+          utils.showToast('记录修改成功');
+        } else {
+          state.transactions.push(tx);
+          utils.showToast('账目保存成功');
+        }
+        
+        utils.saveData();
+        switchTab('dashboard');
+      }
+
+      function deleteCurrentTx() {
+        if (!state.editingTxId || !confirm("确定要删除这条记录吗？")) return;
+        state.transactions = state.transactions.filter(t => t.id !== state.editingTxId);
+        utils.saveData();
+        utils.showToast('记录已删除');
+        switchTab('dashboard');
+      }
+
+      // 配置修改
+      let configTypeStr = '';
+      function openConfigModal(type) {
+        configTypeStr = type;
+        const modal = document.getElementById('modal-config');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        document.getElementById('config-title').innerText = type === 'assets' ? '修改初始总资产' : '修改每月预算额度';
+        const input = document.getElementById('config-input');
+        input.value = type === 'assets' ? state.initialAssets : state.monthlyBudget;
+        setTimeout(() => input.focus(), 50);
+      }
+
+      function closeConfigModal() {
+        const modal = document.getElementById('modal-config');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
+
+      function saveConfig() {
+        const val = Number(document.getElementById('config-input').value);
+        if (isNaN(val)) return utils.showToast('数值无效');
+        
+        if (configTypeStr === 'assets') state.initialAssets = val;
+        else state.monthlyBudget = val;
+        
+        utils.saveData();
+        closeConfigModal();
+        utils.showToast('配置已更新');
+        if (state.tab === 'dashboard') renderDashboard();
+      }
+
+      // 导出 AI
+      function openExportModal() {
+        document.getElementById('modal-export').classList.remove('hidden');
+        document.getElementById('modal-export').classList.add('flex');
+        setExportRange('month'); // 默认选中近30天
+      }
+      
+      function closeExportModal() {
+        document.getElementById('modal-export').classList.add('hidden');
+        document.getElementById('modal-export').classList.remove('flex');
+      }
+
+      function setExportRange(range) {
+        state.exportRange = range;
+        ['today', 'week', 'month', 'all'].forEach(r => {
+          const btn = document.getElementById(`exp-range-${r}`);
+          if (r === range) {
+            btn.className = "flex-1 py-2 text-xs rounded-lg transition bg-zinc-800 text-white font-bold shadow-sm";
+          } else {
+            btn.className = "flex-1 py-2 text-xs rounded-lg transition text-zinc-500 font-medium";
+          }
+        });
+
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        let filtered = [...state.transactions];
+        let titleRange = "全部历史记录";
+
+        if (range === 'today') {
+          const todayStr = utils.getTodayString();
+          filtered = state.transactions.filter(t => t.date === todayStr);
+          titleRange = "今日 (每日)";
+        } else if (range === 'week') {
+          const weekAgo = new Date(today); weekAgo.setDate(today.getDate() - 7);
+          filtered = state.transactions.filter(t => new Date(t.date) >= weekAgo);
+          titleRange = "近7天 (每周)";
+        } else if (range === 'month') {
+          const monthAgo = new Date(today); monthAgo.setDate(today.getDate() - 30);
+          filtered = state.transactions.filter(t => new Date(t.date) >= monthAgo);
+          titleRange = "近30天 (每月)";
+        }
+
+        filtered.sort((a, b) => new Date(a.date) - new Date(b.date));
+        const stats = getStats(); // 获取当前的资产预算状态
+
+        // 构建格式化文本
+        let lines = [
+          `【个人财务数据导出】`,
+          `时间范围: ${titleRange}`,
+          `生成日期: ${utils.getTodayString()}`,
+          `----------------------------------------`,
+          `[当前资产概况]`,
+          `当前总资产: ¥${utils.formatMoney(stats.currentAssets)}`,
+          `月度预算额: ¥${utils.formatMoney(state.monthlyBudget)}`,
+          `本月剩余额: ¥${utils.formatMoney(stats.remainingBudget)}`,
+          `----------------------------------------`,
+          `[收支明细 (包含正负号以区分盈亏)]`,
+          `日期 | 类型 | 金额 | 备注`
+        ];
+
+        let tExp = 0, tFixInc = 0, tFlucInc = 0;
+        filtered.forEach(t => {
+          let typeStr, sign, val;
+          const amt = Number(t.amount);
+          if (t.type === 'expense') { typeStr = '支出'; sign = '-'; val = amt; tExp += amt; }
+          else if (t.type === 'fixed_income') { typeStr = '固定收入'; sign = '+'; val = amt; tFixInc += amt; }
+          else { typeStr = '变动收入'; sign = amt >= 0 ? '+' : ''; val = amt; tFlucInc += amt; }
+          
+          lines.push(`${t.date} | ${typeStr} | ${sign}${val.toFixed(2)} | ${t.note || '无'}`);
+        });
+
+        lines.push(`----------------------------------------`);
+        lines.push(`[本期数据汇总]`);
+        lines.push(`总支出: -${tExp.toFixed(2)}`);
+        lines.push(`固定收入: +${tFixInc.toFixed(2)}`);
+        lines.push(`变动收入净盈亏: ${tFlucInc >= 0 ? '+' : ''}${tFlucInc.toFixed(2)}`);
+        
+        const net = (tFixInc + tFlucInc) - tExp;
+        lines.push(`区间净资产变化: ${net >= 0 ? '+' : ''}${net.toFixed(2)}`);
+        lines.push(``);
+        lines.push(`要求: 请基于以上数据扮演高级理财师，深入分析我的消费结构和变动收益情况，提供定制化的财务优化建议。`);
+
+        document.getElementById('export-textarea').value = lines.join('\n');
+      }
+
+      function copyExport() {
+        const textarea = document.getElementById('export-textarea');
+        textarea.select();
+        try {
+          document.execCommand('copy');
+          utils.showToast('已复制！请粘贴至 AI 对话框');
+          closeExportModal();
+        } catch (err) {
+          utils.showToast('复制失败，请长按手动复制');
+        }
+      }
+
+      // AI 分析库
+      function switchAiMode(mode) {
+        state.aiMode = mode;
+        renderAiView();
+      }
+
+      function openAiAdd() {
+        state.editingAiId = null;
+        document.getElementById('ai-input-title').value = '';
+        document.getElementById('ai-input-content').value = '';
+        switchAiMode('edit');
+      }
+
+      function viewAiRecord(id) {
+        state.editingAiId = id;
+        switchAiMode('view');
+      }
+
+      function editCurrentAi() {
+        const ai = state.analyses.find(a => a.id === state.editingAiId);
+        if(ai) {
+          document.getElementById('ai-input-title').value = ai.title;
+          document.getElementById('ai-input-content').value = ai.content;
+          switchAiMode('edit');
+        }
+      }
+
+      function saveAiRecord() {
+        const content = document.getElementById('ai-input-content').value.trim();
+        const titleInput = document.getElementById('ai-input-title').value.trim();
+        if (!content) return utils.showToast('请粘贴 AI 生成的内容');
+
+        const existingDate = state.editingAiId ? state.analyses.find(a => a.id === state.editingAiId)?.date : null;
+
+        const record = {
+          id: state.editingAiId || utils.generateId(),
+          title: titleInput || `AI财务体检报告 ${utils.getTodayString()}`,
+          content: content,
+          date: existingDate || utils.getTodayString()
+        };
+        
+        if (state.editingAiId) {
+          state.analyses = state.analyses.map(a => a.id === record.id ? record : a);
+        } else {
+          state.analyses.unshift(record);
+        }
+        
+        utils.saveData();
+        utils.showToast('分析报告已保存');
+        switchAiMode('list');
+      }
+
+      function deleteCurrentAi() {
+        if (!state.editingAiId || !confirm("确认要删除这篇分析报告吗？")) return;
+        state.analyses = state.analyses.filter(a => a.id !== state.editingAiId);
+        utils.saveData();
+        utils.showToast('报告已删除');
+        switchAiMode('list');
+      }
+
+      function setChartDays(days) {
+        state.chartDays = days;
+        renderDashboard();
+      }
+
+      window.onload = init;
+
+      return {
+        switchTab, openAddTx, editTx, setTxType, toggleSign, saveTx, deleteCurrentTx,
+        openConfigModal, closeConfigModal, saveConfig, setChartDays, renderRecords,
+        openExportModal, closeExportModal, setExportRange, copyExport,
+        switchAiMode, openAiAdd, viewAiRecord, editCurrentAi, saveAiRecord, deleteCurrentAi
+      };
+    })();
+  </script>
+</body>
+</html>
+
